@@ -1,0 +1,12 @@
+id: simple-descent-01
+difficulty: 1
+airport: VOBL
+title: Simple descent clearance (calibration baseline)
+vars:
+  callsign: {type: callsign, prefix: VT}
+  fl: {type: int_range, min: 60, max: 150, step: 10}
+  qnh: {type: int_range, min: 990, max: 1035, step: 1}
+script:
+  - type: clearance
+    atc: "{callsign_spoken}, descend flight level {fl_spoken}, QNH {qnh_spoken}"
+    expect_readback: [fl, qnh, callsign]

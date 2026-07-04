@@ -1,0 +1,16 @@
+id: rapid-fire-01
+difficulty: 2
+airport: VOBL
+title: "Rapid-fire: heading, altitude, speed and QNH in one transmission"
+vars:
+  callsign: {type: callsign, prefix: VT}
+  fl: {type: int_range, min: 60, max: 150, step: 10}
+  hdg: {type: int_range, min: 10, max: 350, step: 10}
+  spd: {type: int_range, min: 180, max: 280, step: 10}
+  qnh: {type: int_range, min: 990, max: 1035, step: 1}
+script:
+  - type: clearance
+    atc: >-
+      {callsign_spoken}, turn left heading {hdg_spoken}, descend flight level {fl_spoken},
+      reduce speed {spd_spoken} knots, QNH {qnh_spoken}
+    expect_readback: [hdg, fl, spd, qnh, callsign]

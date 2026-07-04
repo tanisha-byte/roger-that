@@ -1,0 +1,20 @@
+id: callsign-trap-01
+difficulty: 2
+airport: VOBL
+title: Similar-callsign trap (the demo scenario)
+vars:
+  callsign: {type: callsign, prefix: VT}
+  intruder: {type: similar_callsign, based_on: callsign}
+  fl: {type: int_range, min: 60, max: 150, step: 10}
+  qnh: {type: int_range, min: 990, max: 1035, step: 1}
+  hdg: {type: int_range, min: 10, max: 350, step: 10}
+  freq: {type: freq_range, min: 118.0, max: 132.0}
+script:
+  - type: clearance
+    atc: "{callsign_spoken}, descend flight level {fl_spoken}, QNH {qnh_spoken}"
+    expect_readback: [fl, qnh, callsign]
+  - type: trap
+    atc: "{intruder_spoken}, turn left heading {hdg_spoken}"
+  - type: clearance
+    atc: "{callsign_spoken}, contact approach {freq_spoken}"
+    expect_readback: [freq, callsign]

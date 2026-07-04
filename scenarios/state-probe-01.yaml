@@ -1,0 +1,19 @@
+id: state-probe-01
+difficulty: 2
+airport: VOBL
+title: Frequency change chain with a "confirm assigned level" state probe
+vars:
+  callsign: {type: callsign, prefix: VT}
+  fl: {type: int_range, min: 60, max: 150, step: 10}
+  qnh: {type: int_range, min: 990, max: 1035, step: 1}
+  freq: {type: freq_range, min: 118.0, max: 132.0}
+script:
+  - type: clearance
+    atc: "{callsign_spoken}, descend flight level {fl_spoken}, QNH {qnh_spoken}"
+    expect_readback: [fl, qnh, callsign]
+  - type: clearance
+    atc: "{callsign_spoken}, contact approach {freq_spoken}"
+    expect_readback: [freq, callsign]
+  - type: state_probe
+    atc: "{callsign_spoken}, confirm your assigned flight level"
+    item: fl

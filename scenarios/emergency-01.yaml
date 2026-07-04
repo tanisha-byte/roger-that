@@ -1,0 +1,14 @@
+id: emergency-01
+difficulty: 3
+airport: VOBL
+title: "Emergency: engine failure mid-scenario -- MAYDAY grading"
+vars:
+  callsign: {type: callsign, prefix: VT}
+  fl: {type: int_range, min: 60, max: 150, step: 10}
+  qnh: {type: int_range, min: 990, max: 1035, step: 1}
+script:
+  - type: clearance
+    atc: "{callsign_spoken}, descend flight level {fl_spoken}, QNH {qnh_spoken}"
+    expect_readback: [fl, qnh, callsign]
+  - type: emergency_trigger
+    atc: "[ENVIRONMENT: your right engine has just failed. You must declare an emergency now.]"

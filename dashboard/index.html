@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Roger That</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  /* ---------- design tokens (dataviz skill reference palette, dark-primary) ---------- */
+  :root {
+    --page:        #0d0d0d;
+    --surface:     #1a1a19;
+    --surface-2:   #17181c;
+    --surface-3:   #1f2127;
+    --border:      rgba(255,255,255,0.10);
+    --border-2:    rgba(255,255,255,0.06);
+    --ink:         #ffffff;
+    --ink-2:       #c3c2b7;
+    --ink-muted:   #898781;
+    --grid:        #2c2c2a;
+
+    --accent:      #3987e5;   /* categorical slot 1 (blue), dark-mode step */
+    --accent-dim:  #184f95;
+    --accent-glow: rgba(57,135,229,0.35);
+    --heldout:     #c98500;   /* categorical slot 3 (yellow), dark-mode step */
+    --intruder:    #d95926;   /* categorical slot 8 (orange), dark-mode step -- game-only, distinct from status red */
+
+    --good:        #0ca30c;
+    --warning:     #fab219;
+    --serious:     #ec835a;
+    --critical:    #d03b3b;
+
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 18px;
+    --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --pixel: "Press Start 2P", var(--mono);
+  }
+  :root[data-theme="light"] {
+    --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f3f0; --surface-3: #ececE7;
+    --border: rgba(11,11,11,0.10); --border-2: rgba(11,11,11,0.06);
+    --ink: #0b0b0b; --ink-2: #52514e; --ink-muted: #898781; --grid: #e1e0d9;
+    --accent: #2a78d6; --accent-dim: #b7d3f6; --accent-glow: rgba(42,120,214,0.20);
+    --heldout: #eda100; --intruder: #eb6834;
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  :root[data-theme="light"] html, :root[data-theme="light"] { color-scheme: light; }
+  body {
+    margin: 0; font-family: var(--font); background: var(--page); color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- header: radar HUD ---------- */
+  header {
+    position: relative; overflow: hidden;
+    padding: 26px 32px 20px; border-bottom: 1px solid var(--border);
+    background:
+      radial-gradient(ellipse 700px 260px at 12% -20%, var(--accent-glow), transparent 60%),
+      var(--surface);
+  }
+  .radar-sweep {
+    position: absolute; top: -140px; right: -140px; width: 340px; height: 340px;
+    border-radius: 50%; pointer-events: none; opacity: 0.5;
+    background:
+      repeating-radial-gradient(circle, var(--border-2) 0, var(--border-2) 1px, transparent 1px, transparent 68px),
+      conic-gradient(from 0deg, var(--accent-glow), transparent 24%);
+    animation: sweep 6s linear infinite;
+    mask-image: radial-gradient(circle, black 55%, transparent 78%);
+  }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  header .head-row { position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  header h1 {
+    margin: 0; font-size: 28px; letter-spacing: 0.5px; font-weight: 800;
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1 .blip { width: 9px; height: 9px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 0 rgba(12,163,12,0.6); animation: blip 2s infinite; flex-shrink: 0; }
+  @keyframes blip { 0% { box-shadow: 0 0 0 0 rgba(12,163,12,0.55); } 70% { box-shadow: 0 0 0 9px rgba(12,163,12,0); } 100% { box-shadow: 0 0 0 0 rgba(12,163,12,0); } }
+  header p.tag { margin: 6px 0 0; color: var(--ink-2); font-size: 13.5px; max-width: 640px; line-height: 1.5; }
+  header .callsign-chip {
+    font-family: var(--mono); font-size: 12px; color: var(--accent); background: rgba(57,135,229,0.12);
+    border: 1px solid rgba(57,135,229,0.30); border-radius: 999px; padding: 6px 14px; white-space: nowrap;
+  }
+  #theme-toggle {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2);
+    border-radius: 999px; padding: 7px 12px; font-size: 12px; cursor: pointer;
+  }
+
+  /* ---------- tabs ---------- */
+  .tabs { position: relative; display: flex; gap: 6px; margin-top: 18px; }
+  .tab-btn {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2);
+    padding: 9px 18px; border-radius: 10px 10px 0 0; font-weight: 700; font-size: 13px; cursor: pointer;
+    border-bottom: none; position: relative; top: 1px;
+  }
+  .tab-btn.active { background: var(--page); color: var(--ink); border-bottom: 1px solid var(--page); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  main { padding: 26px 32px 60px; max-width: 1440px; margin: 0 auto; }
+
+  /* ---------- hero stat row ---------- */
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 26px; }
+  .stat-tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 16px 18px; position: relative; overflow: hidden;
+  }
+  .stat-tile .label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-muted); font-weight: 600; }
+  .stat-tile .value { font-size: 30px; font-weight: 800; margin-top: 6px; line-height: 1; }
+  .stat-tile .sub { font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+  .stat-tile.accent::before {
+    content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, var(--accent-glow), transparent 60%); opacity: 0.5;
+  }
+
+  /* ---------- layout grid ---------- */
+  .grid { display: grid; gap: 20px; grid-template-columns: 1fr 1fr; }
+  .full { grid-column: 1 / -1; }
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 20px 22px; position: relative;
+  }
+  .panel h2 { margin: 0 0 4px; font-size: 15px; font-weight: 700; letter-spacing: 0.2px; display: flex; align-items: center; gap: 8px; }
+  .panel h2 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .panel .hint { margin: 0 0 16px; color: var(--ink-muted); font-size: 12.5px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border-2); }
+  th { color: var(--ink-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+  tbody tr { transition: background 0.12s ease; cursor: pointer; }
+  tbody tr:hover td { background: var(--surface-2); }
+  .cs { font-family: var(--mono); font-size: 12.5px; }
+
+  .meter-wrap { display: inline-flex; align-items: center; gap: 8px; min-width: 108px; }
+  .meter { position: relative; width: 64px; height: 6px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+  .meter > span { position: absolute; inset: 0 auto 0 0; border-radius: 4px; }
+  .meter-label { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 34px; }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.2px; }
+  .badge.ok { background: rgba(12,163,12,0.15); color: #3ddb3d; }
+  .badge.warn { background: rgba(250,178,25,0.15); color: var(--warning); }
+  .badge.bad { background: rgba(208,59,59,0.16); color: #ff7a7a; }
+  .badge.live { background: rgba(57,135,229,0.15); color: var(--accent); }
+  .badge.live .blip-sm { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blip 1.6s infinite; }
+
+  input, select, button {
+    background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 11px; font-size: 13px; font-family: var(--font);
+  }
+  button { background: var(--accent); color: #05121f; border: none; font-weight: 700; cursor: pointer; transition: filter 0.12s ease; }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button.ghost { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--border); font-weight: 600; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+  .row label { font-size: 11.5px; color: var(--ink-muted); display: flex; flex-direction: column; gap: 5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .status-line { font-size: 12.5px; color: var(--ink-2); min-height: 18px; }
+  .callout { background: var(--surface-2); border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 12.5px; color: var(--ink-2); }
+  .callout code { font-family: var(--mono); background: var(--surface-3); padding: 2px 5px; border-radius: 4px; font-size: 11.5px; }
+
+  pre { white-space: pre-wrap; word-break: break-word; background: var(--surface-2); border: 1px solid var(--border-2); padding: 12px; border-radius: var(--radius-sm); font-size: 12px; max-height: 340px; overflow: auto; font-family: var(--mono); }
+
+  .turn { border-left: 3px solid var(--border); padding: 10px 14px; margin-bottom: 9px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--surface-2); }
+  .turn.flag { border-left-color: var(--critical); background: rgba(208,59,59,0.07); }
+  .turn .kind-tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-muted); font-weight: 700; }
+  .turn .atc { color: var(--ink-2); font-size: 12.5px; margin-top: 4px; }
+  .turn .reply { font-size: 13.5px; margin-top: 5px; }
+  .turn .reply .empty { color: var(--ink-muted); font-style: italic; }
+  .muted { color: var(--ink-muted); font-size: 12px; }
+  canvas.chartjs { max-height: 280px; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 6px; }
+
+  /* ================= FLIGHT SIM (game tab) ================= */
+  .game-shell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .game-controls { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .scene {
+    position: relative; height: 380px; overflow: hidden;
+    background:
+      radial-gradient(1.5px 1.5px at 10% 20%, #ffffff88 50%, transparent),
+      radial-gradient(1.5px 1.5px at 30% 12%, #ffffff66 50%, transparent),
+      radial-gradient(1.5px 1.5px at 55% 30%, #ffffffaa 50%, transparent),
+      radial-gradient(1.5px 1.5px at 75% 15%, #ffffff55 50%, transparent),
+      radial-gradient(1.5px 1.5px at 90% 25%, #ffffff88 50%, transparent),
+      linear-gradient(180deg, #0a0e2a 0%, #131a4a 40%, #24306e 70%, #3a4590 100%);
+    image-rendering: pixelated;
+  }
+  :root[data-theme="light"] .scene {
+    background:
+      linear-gradient(180deg, #bfe0ff 0%, #dff0ff 60%, #eef7ff 100%);
+  }
+  .cloud { position: absolute; opacity: 0.8; animation: drift linear infinite; }
+  @keyframes drift { from { transform: translateX(110vw); } to { transform: translateX(-30vw); } }
+  .ground {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
+    background: repeating-linear-gradient(90deg, #2c2c2a 0 40px, #45453f 40px 44px);
+    border-top: 3px solid #55554e;
+  }
+  .hud { position: absolute; top: 10px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; z-index: 5; font-family: var(--pixel); font-size: 10px; color: #fff; text-shadow: 2px 2px 0 rgba(0,0,0,0.5); }
+  .hud .hud-block { background: rgba(0,0,0,0.35); border: 2px solid rgba(255,255,255,0.25); border-radius: 6px; padding: 8px 10px; }
+  .hud .hearts { font-size: 14px; letter-spacing: 3px; margin-top: 4px; }
+  .hud .score-val { color: #ffd93d; margin-top: 4px; font-size: 14px; }
+
+  .plane { position: absolute; top: 42%; left: 8%; transition: left 1s ease, top 0.4s ease; z-index: 4; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4)); }
+  .plane svg { display: block; width: 84px; height: 42px; image-rendering: pixelated; }
+  .plane.bounce { animation: bounce 0.6s ease; }
+  .plane.shake { animation: shake 0.5s ease; }
+  @keyframes bounce { 0%,100% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-18px) rotate(-4deg); } 60% { transform: translateY(4px) rotate(2deg); } }
+  @keyframes shake { 0%,100% { transform: translate(0,0) rotate(0); } 20% { transform: translate(-8px,4px) rotate(-6deg); } 40% { transform: translate(8px,-4px) rotate(6deg); } 60% { transform: translate(-6px,2px) rotate(-4deg); } 80% { transform: translate(6px,-2px) rotate(4deg); } }
+
+  .tower { position: absolute; bottom: 34px; left: 3%; z-index: 3; }
+  .tower svg { display: block; width: 84px; height: 130px; image-rendering: pixelated; }
+
+  .intruder-plane { position: absolute; top: 20%; left: -120px; z-index: 4; animation: intruder-fly 2.6s linear forwards; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4)); }
+  .intruder-plane svg { width: 70px; height: 34px; image-rendering: pixelated; transform: scaleX(-1); }
+  @keyframes intruder-fly { from { left: -120px; } to { left: 108%; } }
+
+  .bubble {
+    position: absolute; max-width: 380px; background: #f4f2ea; color: #16171c; border: 3px solid #16171c;
+    border-radius: 10px; padding: 10px 13px; font-family: var(--mono); font-size: 12.5px; line-height: 1.45;
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.35); z-index: 6; opacity: 0; transform: translateY(8px) scale(0.9);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .bubble.show { opacity: 1; transform: translateY(0) scale(1); }
+  .bubble.atc { top: 14%; left: 14%; }
+  .bubble.pilot { top: 14%; right: 4%; text-align: right; border-color: var(--accent); }
+  .bubble .who { display:block; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-dim); margin-bottom: 4px; font-weight: 700; }
+  .bubble.pilot .who { color: #1c5cab; }
+
+  .pop-text {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-family: var(--pixel);
+    font-size: 22px; z-index: 8; pointer-events: none; animation: pop 1.1s ease forwards;
+  }
+  .pop-text.good { color: #ffd93d; text-shadow: 3px 3px 0 #b8860b; }
+  .pop-text.bad { color: #ff5b5b; text-shadow: 3px 3px 0 #7a0000; }
+  @keyframes pop { 0% { opacity: 0; transform: translate(-50%,-30%) scale(0.5); } 25% { opacity: 1; transform: translate(-50%,-60%) scale(1.15); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%,-90%) scale(1); } }
+
+  .end-banner {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+    background: rgba(5,7,20,0.86); z-index: 10; text-align: center; padding: 20px;
+  }
+  .end-banner.show { display: flex; }
+  .end-banner .title { font-family: var(--pixel); font-size: 22px; color: #ffd93d; text-shadow: 3px 3px 0 #7a5c00; }
+  .end-banner .score { font-family: var(--pixel); font-size: 34px; color: #fff; margin: 6px 0; }
+  .end-banner .sub { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .flash-red { animation: flashred 0.5s ease; }
+  @keyframes flashred { 0%,100% { background-color: transparent; } 30% { background-color: rgba(208,59,59,0.35); } }
+  .runway-lights span { display:inline-block; width:4px; height:4px; background:#ffd93d; margin:0 3px; border-radius:50%; animation: twinkle 1.4s infinite; }
+  @keyframes twinkle { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+</style>
+</head>
+<body data-theme="">
+<header>
+  <div class="radar-sweep"></div>
+  <div class="head-row">
+    <div>
+      <h1><span class="blip"></span> Roger That</h1>
+      <p class="tag">A deterministic evaluation gauntlet for AI agents, built on ATC radiotelephony. Every grade you see came from a parser and a regulation &mdash; not a judge.</p>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span class="callsign-chip" id="header-callsign">VT-ROGER &middot; ON FREQUENCY</span>
+      <button id="theme-toggle" onclick="toggleTheme()">&#9788;/&#9789;</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-btn-game" onclick="showTab('game')">&#127918; Flight Sim</button>
+    <button class="tab-btn" id="tab-btn-metrics" onclick="showTab('metrics')">&#128202; Metrics</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= GAME TAB ================= -->
+  <div class="tab-panel active" id="tab-game">
+    <div class="panel full" style="margin-bottom:20px;">
+      <h2><span class="dot"></span>Play back a real session <span class="hint" style="margin:0">&mdash; every line here is a real transcript, graded by the real scorer</span></h2>
+      <div class="row" style="margin-bottom:0;">
+        <label style="min-width:280px;">Session
+          <select id="game-session-select"></select>
+        </label>
+        <button onclick="startGame()">&#9654; Play</button>
+        <button class="ghost" onclick="loadGameSessions()">Refresh list</button>
+        <span class="status-line" id="game-status" style="align-self:center;"></span>
+      </div>
+    </div>
+
+    <div class="game-shell">
+      <div class="scene" id="scene">
+        <div class="cloud" style="top:8%; animation-duration: 34s;"><svg width="70" height="26" viewBox="0 0 70 26"><rect x="10" y="10" width="50" height="10" fill="#ffffffcc"/><rect x="20" y="2" width="30" height="10" fill="#ffffffcc"/><rect x="0" y="14" width="20" height="8" fill="#ffffffcc"/><rect x="50" y="14" width="20" height="8" fill="#ffffffcc"/></svg></div>
+        <div class="cloud" style="top:22%; animation-duration: 48s; animation-delay: -12s;"><svg width="50" height="20" viewBox="0 0 50 20"><rect x="8" y="8" width="34" height="8" fill="#ffffffaa"/><rect x="16" y="0" width="18" height="8" fill="#ffffffaa"/></svg></div>
+        <div class="cloud" style="top:4%; animation-duration: 60s; animation-delay: -30s;"><svg width="60" height="22" viewBox="0 0 60 22"><rect x="6" y="9" width="44" height="8" fill="#ffffff99"/><rect x="18" y="1" width="20" height="9" fill="#ffffff99"/></svg></div>
+
+        <div class="hud">
+          <div class="hud-block">
+            SCORE<br><span class="score-val" id="game-score">000000</span>
+          </div>
+          <div class="hud-block" style="text-align:right;">
+            TURN <span id="game-turn">0/0</span>
+            <div class="hearts" id="game-hearts">&hearts;&hearts;&hearts;</div>
+          </div>
+        </div>
+
+        <div class="tower">
+          <svg viewBox="0 0 42 65" xmlns="http://www.w3.org/2000/svg">
+            <rect x="14" y="30" width="14" height="35" fill="#5b5b55"/>
+            <rect x="10" y="14" width="22" height="18" fill="#8a8a80" stroke="#2c2c2a" stroke-width="1"/>
+            <rect x="13" y="18" width="4" height="6" fill="#3987e5"/>
+            <rect x="19" y="18" width="4" height="6" fill="#3987e5"/>
+            <rect x="25" y="18" width="4" height="6" fill="#3987e5"/>
+            <rect x="18" y="8" width="6" height="8" fill="#5b5b55"/>
+            <rect x="19" y="2" width="4" height="7" fill="#d03b3b"/>
+          </svg>
+        </div>
+
+        <div class="plane" id="game-plane">
+          <svg viewBox="0 0 84 42" xmlns="http://www.w3.org/2000/svg">
+            <rect x="10" y="18" width="52" height="8" fill="#eef1f5"/>
+            <rect x="60" y="17" width="14" height="10" fill="#eef1f5"/>
+            <rect x="72" y="19" width="8" height="6" fill="#3987e5"/>
+            <rect x="26" y="8" width="18" height="10" fill="#3987e5"/>
+            <rect x="26" y="26" width="18" height="10" fill="#3987e5"/>
+            <rect x="8" y="10" width="8" height="8" fill="#d03b3b"/>
+            <rect x="34" y="19" width="10" height="6" fill="#8fd0ff"/>
+          </svg>
+        </div>
+
+        <div class="ground"></div>
+        <div class="end-banner" id="game-end-banner">
+          <div class="title" id="end-title">LEVEL COMPLETE</div>
+          <div class="score" id="end-score">100%</div>
+          <div class="sub" id="end-sub"></div>
+          <div class="sub runway-lights" style="margin-top:8px;"><span></span><span></span><span></span><span></span><span></span></div>
+        </div>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:10px;">Green pop = clean readback. Red pop + a lost heart = a scored safety violation (like falling for the callsign trap). The orange plane is the intruder aircraft the trap addresses &mdash; correct behavior is to ignore it entirely.</p>
+  </div>
+
+  <!-- ================= METRICS TAB ================= -->
+  <div class="tab-panel" id="tab-metrics">
+
+  <div class="stat-row" id="stat-row">
+    <div class="stat-tile accent"><div class="label">Total sessions</div><div class="value" id="stat-total">&mdash;</div><div class="sub">real, graded, on record</div></div>
+    <div class="stat-tile"><div class="label">Real live calls</div><div class="value" id="stat-live">&mdash;</div><div class="sub">real phone, real model</div></div>
+    <div class="stat-tile"><div class="label">Avg score (all)</div><div class="value" id="stat-avg">&mdash;</div><div class="sub">composite, weighted</div></div>
+    <div class="stat-tile"><div class="label">Safety flags</div><div class="value" id="stat-flags">&mdash;</div><div class="sub">violations caught</div></div>
+    <div class="stat-tile"><div class="label">Scenarios</div><div class="value" id="stat-scenarios">&mdash;</div><div class="sub">in the catalog</div></div>
+  </div>
+
+  <div class="grid">
+
+    <div class="panel full">
+      <h2><span class="dot"></span>Run a real campaign <span class="hint" style="margin:0">&mdash; a real OpenAI-compatible model, no mock fallback</span></h2>
+      <div id="llm-callout" class="callout" style="display:none; margin-bottom:14px;">
+        No LLM key configured on the server &mdash; set <code>OPENAI_API_KEY</code> or <code>ROGER_THAT_LLM_API_KEY</code> and restart to enable this.
+      </div>
+      <div class="row">
+        <label>Campaign ID <input id="c-campaign" value="eval-run"></label>
+        <label>Agent name <input id="c-agent-name" value="gpt-4o-mini"></label>
+        <label>Model <input id="c-model" value="gpt-4o-mini" style="width:160px"></label>
+        <label>Sessions <input id="c-n" type="number" value="10" style="width:70px"></label>
+        <label>Seed <input id="c-seed" type="number" value="1" style="width:70px"></label>
+        <button id="launch-btn" onclick="launchCampaign()">Launch &rarr;</button>
+      </div>
+      <div id="launch-status" class="status-line"></div>
+
+      <div class="callout" style="margin-top:14px;">
+        Prefer a real live phone call instead? That path is intentionally not a one-click button here &mdash; it rings a real phone and needs you reading the controller's lines live. Generate the command:
+        <div class="row" style="margin:10px 0 6px;">
+          <label>Scenario
+            <select id="live-scenario"></select>
+          </label>
+          <label>Seed <input id="live-seed" type="number" value="1" style="width:70px"></label>
+          <label>Agent ID <input id="live-agent-id" placeholder="your Bolna agent_id" style="width:220px"></label>
+          <label>Phone <input id="live-phone" placeholder="+91..." style="width:130px"></label>
+          <button class="ghost" onclick="copyLiveCommand()">Copy command</button>
+        </div>
+        <pre id="live-command" style="margin:0;">python run_live_call.py --scenario callsign-trap-01 --seed 1 --agent-id &lt;your-agent-id&gt; --to &lt;phone&gt;</pre>
+      </div>
+    </div>
+
+    <div class="panel full">
+      <h2><span class="dot"></span>Leaderboard <span class="hint" style="margin:0">&mdash; agent &times; mode &times; noise tier</span></h2>
+      <div class="row" style="margin-bottom:12px;">
+        <label>Metric
+          <select id="lb-metric" onchange="loadLeaderboard()">
+            <option value="score">score</option>
+            <option value="readback_completeness">readback_completeness</option>
+            <option value="safety_score">safety_score</option>
+            <option value="state_consistency">state_consistency</option>
+            <option value="emergency_completeness">emergency_completeness</option>
+          </select>
+        </label>
+        <button class="ghost" onclick="loadLeaderboard()">Refresh</button>
+      </div>
+      <table id="leaderboard-table">
+        <thead><tr><th>Agent</th><th>Mode</th><th>SNR</th><th>Sessions</th><th>Score</th><th>Safety</th><th>Violations</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2><span class="dot"></span>Learning curve <span class="hint" style="margin:0">&mdash; score vs session</span></h2>
+      <div class="row">
+        <label>Agent <input id="curve-agent" placeholder="agent name"></label>
+        <button class="ghost" onclick="loadCurve()">Load</button>
+      </div>
+      <div style="display:flex; gap:16px; margin-bottom:8px; font-size:12px; color:var(--ink-2);">
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-right:5px;"></span>train</span>
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--heldout);margin-right:5px;"></span>held-out</span>
+      </div>
+      <canvas id="curve-chart" class="chartjs"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2><span class="dot"></span>Skill diff viewer <span class="hint" style="margin:0">&mdash; a learning agent's self-written skill, over time</span></h2>
+      <div class="row">
+        <label>Agent <input id="skill-agent" placeholder="agent name"></label>
+        <button class="ghost" onclick="loadSkills()">Load</button>
+      </div>
+      <select id="skill-select" onchange="renderSkill()" style="width:100%; margin-bottom:10px;"></select>
+      <pre id="skill-content">no snapshots loaded &mdash; populated once a LearningAgent (e.g. a real Hermes session) runs a campaign</pre>
+    </div>
+
+    <div class="panel full">
+      <h2><span class="dot"></span>Recent sessions <span class="hint" style="margin:0">&mdash; click a row for the full transcript replay</span></h2>
+      <table id="sessions-table">
+        <thead><tr><th>ID</th><th>Campaign</th><th>Agent</th><th>Scenario</th><th>Pool</th><th>Score</th><th>Created</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="panel full" id="session-detail" style="display:none">
+      <h2><span class="dot"></span>Session replay <span class="hint" id="session-detail-sub" style="margin:0"></span></h2>
+      <div id="session-scorecard" class="row"></div>
+      <div id="session-turns"></div>
+    </div>
+
+  </div>
+  </div>
+
+</main>
+<script>
+let curveChart = null;
+let skillSnapshots = [];
+
+function toggleTheme() {
+  const root = document.body;
+  const current = root.getAttribute('data-theme');
+  root.setAttribute('data-theme', current === 'light' ? 'dark' : 'light');
+}
+
+function showTab(name) {
+  document.getElementById('tab-game').classList.toggle('active', name === 'game');
+  document.getElementById('tab-metrics').classList.toggle('active', name === 'metrics');
+  document.getElementById('tab-btn-game').classList.toggle('active', name === 'game');
+  document.getElementById('tab-btn-metrics').classList.toggle('active', name === 'metrics');
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function statusColor(score) {
+  if (score >= 0.85) return { c: 'var(--good)', cls: 'ok' };
+  if (score >= 0.6) return { c: 'var(--warning)', cls: 'warn' };
+  return { c: 'var(--critical)', cls: 'bad' };
+}
+
+function scoreMeter(score) {
+  const s = statusColor(score);
+  const pct = Math.max(2, Math.round(score * 100));
+  return `<span class="meter-wrap">
+    <span class="meter"><span style="width:${pct}%; background:${s.c};"></span></span>
+    <span class="meter-label" style="color:${s.c}">${(score*100).toFixed(0)}%</span>
+  </span>`;
+}
+
+function poolBadge(pool) {
+  if (pool === 'live') return '<span class="badge live"><span class="blip-sm"></span>LIVE CALL</span>';
+  if (pool === 'held_out') return '<span class="badge warn">held-out</span>';
+  return '<span class="badge" style="background:var(--surface-3); color:var(--ink-2);">train</span>';
+}
+
+/* ================= GAME TAB ================= */
+
+async function loadGameSessions() {
+  const rows = await api('/api/sessions?limit=100');
+  const sel = document.getElementById('game-session-select');
+  sel.innerHTML = rows.map(r => `<option value="${r.id}">#${r.id} — ${r.agent} on ${r.scenario_id} (${(r.score*100).toFixed(0)}%)${r.pool === 'live' ? ' ✈ LIVE' : ''}</option>`).join('')
+    || '<option value="">no sessions yet</option>';
+}
+
+let gameSession = null, gameTurnIndex = 0, gameScore = 0, gameLives = 3, gameToken = 0;
+
+function sceneEl(id) { return document.getElementById(id); }
+
+async function startGame() {
+  const id = document.getElementById('game-session-select').value;
+  if (!id) { document.getElementById('game-status').textContent = 'no session selected'; return; }
+  gameToken += 1;
+  const myToken = gameToken;
+  document.getElementById('game-status').textContent = 'loading...';
+  gameSession = await api(`/api/sessions/${id}`);
+  if (myToken !== gameToken) return;
+  gameTurnIndex = 0; gameScore = 0; gameLives = 3;
+  document.getElementById('game-status').textContent = `playing session #${gameSession.id}`;
+  document.getElementById('game-end-banner').classList.remove('show');
+  document.querySelectorAll('.bubble').forEach(b => b.remove());
+  sceneEl('game-plane').style.left = '8%';
+  sceneEl('game-plane').classList.remove('shake', 'bounce');
+  updateHud();
+  setTimeout(() => playTurn(myToken), 400);
+}
+
+function updateHud() {
+  document.getElementById('game-score').textContent = String(gameScore).padStart(6, '0');
+  document.getElementById('game-turn').textContent = `${Math.min(gameTurnIndex, gameSession ? gameSession.turns.length : 0)}/${gameSession ? gameSession.turns.length : 0}`;
+  const hearts = Math.max(0, gameLives);
+  document.getElementById('game-hearts').innerHTML = '&hearts;'.repeat(hearts) + '&#9829;&#65039;&#8203;'.repeat(0) + '&#9825;'.repeat(3 - hearts);
+}
+
+function showBubble(kind, text) {
+  const scene = sceneEl('scene');
+  const div = document.createElement('div');
+  div.className = `bubble ${kind}`;
+  div.innerHTML = `<span class="who">${kind === 'atc' ? 'ATC' : 'PILOT'}</span>${text || '(no response)'}`;
+  scene.appendChild(div);
+  requestAnimationFrame(() => div.classList.add('show'));
+  setTimeout(() => { div.classList.remove('show'); setTimeout(() => div.remove(), 300); }, 2600);
+}
+
+function popText(text, cls) {
+  const scene = sceneEl('scene');
+  const div = document.createElement('div');
+  div.className = `pop-text ${cls}`;
+  div.textContent = text;
+  scene.appendChild(div);
+  setTimeout(() => div.remove(), 1100);
+}
+
+function flyIntruder() {
+  const scene = sceneEl('scene');
+  const div = document.createElement('div');
+  div.className = 'intruder-plane';
+  div.innerHTML = `<svg viewBox="0 0 84 42" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="18" width="52" height="8" fill="#f5e3d8"/>
+      <rect x="60" y="17" width="14" height="10" fill="#f5e3d8"/>
+      <rect x="72" y="19" width="8" height="6" fill="#d95926"/>
+      <rect x="26" y="8" width="18" height="10" fill="#d95926"/>
+      <rect x="26" y="26" width="18" height="10" fill="#d95926"/>
+      <rect x="8" y="10" width="8" height="8" fill="#7a1f1f"/>
+    </svg>`;
+  scene.appendChild(div);
+  setTimeout(() => div.remove(), 2700);
+}
+
+function playTurn(myToken) {
+  if (myToken !== gameToken) return;
+  if (!gameSession || gameTurnIndex >= gameSession.turns.length) {
+    showEndBanner();
+    return;
+  }
+  const t = gameSession.turns[gameTurnIndex];
+  const rec = t.record || {};
+  const isTrapish = t.kind === 'trap' || t.kind === 'clutter';
+  if (isTrapish) flyIntruder();
+
+  showBubble('atc', t.atc_text);
+
+  setTimeout(() => {
+    if (myToken !== gameToken) return;
+    showBubble('pilot', t.reply_text);
+    const flagged = !!rec.violation;
+
+    setTimeout(() => {
+      if (myToken !== gameToken) return;
+      const plane = sceneEl('game-plane');
+      if (flagged) {
+        plane.classList.remove('bounce'); void plane.offsetWidth; plane.classList.add('shake');
+        sceneEl('scene').classList.remove('flash-red'); void sceneEl('scene').offsetWidth; sceneEl('scene').classList.add('flash-red');
+        popText('MISSED!', 'bad');
+        gameLives -= 1;
+      } else {
+        plane.classList.remove('shake'); void plane.offsetWidth; plane.classList.add('bounce');
+        popText('+100', 'good');
+        gameScore += 100;
+      }
+      updateHud();
+      const pct = 8 + ((gameTurnIndex + 1) / gameSession.turns.length) * 74;
+      plane.style.left = pct + '%';
+      gameTurnIndex += 1;
+      setTimeout(() => playTurn(myToken), 1500);
+    }, 950);
+  }, 1250);
+}
+
+function showEndBanner() {
+  const sc = gameSession.scorecard;
+  document.getElementById('end-title').textContent = sc.safety_violations.length ? 'SESSION COMPLETE' : 'PERFECT FLIGHT';
+  document.getElementById('end-score').textContent = (sc.score * 100).toFixed(0) + '%';
+  document.getElementById('end-sub').textContent = `readback ${(sc.readback_completeness*100).toFixed(0)}% · safety ${(sc.safety_score*100).toFixed(0)}% · ${sc.safety_violations.length} violation(s)`;
+  sceneEl('game-end-banner').classList.add('show');
+  document.getElementById('game-status').textContent = `finished #${gameSession.id} — final score ${gameScore}`;
+}
+
+/* ================= METRICS TAB ================= */
+
+async function loadConfig() {
+  const cfg = await api('/api/config');
+  document.getElementById('llm-callout').style.display = cfg.llm_campaigns_available ? 'none' : 'block';
+  document.getElementById('launch-btn').disabled = !cfg.llm_campaigns_available;
+}
+
+async function launchCampaign() {
+  const body = {
+    campaign_id: document.getElementById('c-campaign').value,
+    agent_name: document.getElementById('c-agent-name').value,
+    model: document.getElementById('c-model').value,
+    n_sessions: parseInt(document.getElementById('c-n').value, 10),
+    base_seed: parseInt(document.getElementById('c-seed').value, 10),
+  };
+  document.getElementById('launch-status').textContent = 'launching...';
+  try {
+    const r = await api('/api/campaigns', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    document.getElementById('launch-status').textContent = `started campaign "${r.campaign_id}" for agent "${r.agent_name}" -- refresh below in a few seconds`;
+  } catch (e) {
+    document.getElementById('launch-status').textContent = 'failed: ' + e.message;
+  }
+}
+
+function updateLiveCommand() {
+  const scenario = document.getElementById('live-scenario').value || 'callsign-trap-01';
+  const seed = document.getElementById('live-seed').value || '1';
+  const agentId = document.getElementById('live-agent-id').value || '<your-agent-id>';
+  const phone = document.getElementById('live-phone').value || '<phone>';
+  document.getElementById('live-command').textContent =
+    `python run_live_call.py --scenario ${scenario} --seed ${seed} --agent-id ${agentId} --to ${phone}`;
+}
+
+function copyLiveCommand() {
+  updateLiveCommand();
+  navigator.clipboard?.writeText(document.getElementById('live-command').textContent);
+}
+
+async function loadLeaderboard() {
+  const metric = document.getElementById('lb-metric').value;
+  const rows = await api(`/api/leaderboard?metric=${metric}`);
+  const tbody = document.querySelector('#leaderboard-table tbody');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${r.agent}</strong></td><td>${r.mode}</td><td>${r.snr ?? '&mdash;'}</td><td>${r.n_sessions}</td>
+      <td>${scoreMeter(r.avg_metric)}</td><td>${scoreMeter(r.avg_safety)}</td>
+      <td>${r.sessions_with_violations > 0 ? `<span class="badge bad">${r.sessions_with_violations}</span>` : '<span class="badge ok">0</span>'}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">no sessions yet &mdash; run a real campaign above, or a live call from the CLI</td></tr>';
+
+  const total = rows.reduce((a, r) => a + r.n_sessions, 0);
+  const violations = rows.reduce((a, r) => a + r.sessions_with_violations, 0);
+  const avg = total ? rows.reduce((a, r) => a + r.avg_score * r.n_sessions, 0) / total : 0;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-avg').textContent = total ? (avg * 100).toFixed(0) + '%' : '—';
+  document.getElementById('stat-flags').textContent = violations;
+}
+
+async function loadLiveStat() {
+  const rows = await api('/api/sessions?limit=1000');
+  const live = rows.filter(r => r.pool === 'live').length;
+  document.getElementById('stat-live').textContent = live;
+}
+
+async function loadScenarioStat() {
+  const rows = await api('/api/scenarios');
+  document.getElementById('stat-scenarios').textContent = rows.length;
+  const sel = document.getElementById('live-scenario');
+  if (sel) sel.innerHTML = rows.map(s => `<option value="${s.id}">${s.id}</option>`).join('');
+  updateLiveCommand();
+}
+
+async function loadCurve() {
+  const agent = document.getElementById('curve-agent').value;
+  if (!agent) return;
+  const rows = await api(`/api/agents/${encodeURIComponent(agent)}/curve`);
+  const labels = rows.map(r => r.session_index);
+  const data = rows.map(r => r.score);
+  const isDark = document.body.getAttribute('data-theme') !== 'light';
+  const accent = getComputedStyle(document.body).getPropertyValue('--accent').trim();
+  const heldout = getComputedStyle(document.body).getPropertyValue('--heldout').trim();
+  const surface = getComputedStyle(document.body).getPropertyValue('--surface').trim();
+  const pointColors = rows.map(r => r.pool === 'held_out' ? heldout : accent);
+  if (curveChart) curveChart.destroy();
+  curveChart = new Chart(document.getElementById('curve-chart'), {
+    type: 'line',
+    data: { labels, datasets: [{ label: agent, data, borderColor: accent, backgroundColor: accent + '1a', fill: true, pointBackgroundColor: pointColors, pointBorderColor: surface, pointBorderWidth: 2, pointRadius: 5, tension: 0.3 }] },
+    options: {
+      scales: {
+        y: { min: 0, max: 1, grid: { color: 'rgba(128,128,128,0.15)' }, ticks: { color: isDark ? '#c3c2b7' : '#52514e' } },
+        x: { grid: { display: false }, ticks: { color: isDark ? '#c3c2b7' : '#52514e' } },
+      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `score ${(ctx.parsed.y*100).toFixed(0)}% (${rows[ctx.dataIndex].pool})` } } }
+    }
+  });
+}
+
+async function loadSkills() {
+  const agent = document.getElementById('skill-agent').value;
+  if (!agent) return;
+  skillSnapshots = await api(`/api/skills/${encodeURIComponent(agent)}/timeline`);
+  const sel = document.getElementById('skill-select');
+  sel.innerHTML = skillSnapshots.map((s, i) => `<option value="${i}">session ${s.session_index} -- ${s.skill_file}</option>`).join('');
+  renderSkill();
+}
+
+function renderSkill() {
+  const i = parseInt(document.getElementById('skill-select').value || '0', 10);
+  const s = skillSnapshots[i];
+  document.getElementById('skill-content').textContent = s ? s.content : 'no snapshots loaded -- populated once a LearningAgent (e.g. a real Hermes session) runs a campaign';
+}
+
+async function loadSessions() {
+  const rows = await api('/api/sessions?limit=50');
+  const tbody = document.querySelector('#sessions-table tbody');
+  tbody.innerHTML = rows.map(r => `
+    <tr onclick="loadSessionDetail(${r.id})">
+      <td>${r.id}</td><td>${r.campaign_id}</td><td class="cs">${r.agent}</td><td>${r.scenario_id}</td>
+      <td>${poolBadge(r.pool)}</td><td>${scoreMeter(r.score)}</td><td class="muted">${r.created_at.slice(0,19).replace('T',' ')}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">no sessions yet</td></tr>';
+}
+
+async function loadSessionDetail(id) {
+  const s = await api(`/api/sessions/${id}`);
+  document.getElementById('session-detail').style.display = 'block';
+  document.getElementById('session-detail-sub').innerHTML = `&mdash; #${s.id} &middot; <span class="cs">${s.agent}</span> on ${s.scenario_id} (${s.pool}) ${s.pool === 'live' ? poolBadge('live') : ''}`;
+  const sc = s.scorecard;
+  document.getElementById('session-scorecard').innerHTML = `
+    <div>Score ${scoreMeter(sc.score)}</div>
+    <div>Readback ${scoreMeter(sc.readback_completeness)}</div>
+    <div>Safety ${scoreMeter(sc.safety_score)}</div>
+    <div>State ${scoreMeter(sc.state_consistency)}</div>
+    <div>Emergency ${scoreMeter(sc.emergency_completeness)}</div>
+    <div>${sc.safety_violations.length ? sc.safety_violations.map(v => `<span class="badge bad">${v}</span>`).join(' ') : '<span class="badge ok">no flags</span>'}</div>
+  `;
+  document.getElementById('session-turns').innerHTML = s.turns.map(t => {
+    const rec = t.record || {};
+    const flagged = !!rec.violation;
+    return `<div class="turn ${flagged ? 'flag' : ''}">
+      <div class="kind-tag">Turn ${t.turn_index} &middot; ${t.kind}</div>
+      <div class="atc">ATC: ${t.atc_text}</div>
+      <div class="reply">Pilot: ${t.reply_text ? t.reply_text : '<span class="empty">(no response)</span>'} ${t.latency_ms ? `<span class="muted">&middot; ${t.latency_ms}ms</span>` : ''}</div>
+      ${flagged ? `<div style="margin-top:6px;"><span class="badge bad">${rec.violation}</span></div>` : ''}
+    </div>`;
+  }).join('');
+  window.scrollTo({top: document.getElementById('session-detail').offsetTop - 20, behavior: 'smooth'});
+}
+
+document.getElementById('live-scenario')?.addEventListener('change', updateLiveCommand);
+document.getElementById('live-seed')?.addEventListener('input', updateLiveCommand);
+document.getElementById('live-agent-id')?.addEventListener('input', updateLiveCommand);
+document.getElementById('live-phone')?.addEventListener('input', updateLiveCommand);
+
+loadGameSessions();
+loadConfig();
+loadLeaderboard();
+loadSessions();
+loadLiveStat();
+loadScenarioStat();
+setInterval(() => { loadLeaderboard(); loadSessions(); loadLiveStat(); loadGameSessions(); }, 8000);
+</script>
+</body>
+</html>

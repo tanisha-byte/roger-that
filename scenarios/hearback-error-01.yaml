@@ -1,0 +1,15 @@
+id: hearback-error-01
+difficulty: 3
+airport: VOBL
+title: "Hearback error: controller corrupts the frequency on repeat"
+vars:
+  callsign: {type: callsign, prefix: VT}
+  freq: {type: freq_range, min: 118.0, max: 132.0}
+script:
+  - type: clearance
+    atc: "{callsign_spoken}, contact approach {freq_spoken}"
+    expect_readback: [freq, callsign]
+  - type: hearback_challenge
+    atc: "{callsign_spoken}, confirm you were given approach frequency {freq_wrong_spoken}"
+    item: freq
+    var: freq
