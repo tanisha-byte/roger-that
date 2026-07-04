@@ -4,7 +4,7 @@ A deterministic evaluation gauntlet for AI agents, built on air traffic control 
 
 **No mock agents.** Every session on the leaderboard is a real graded phone call to a real Bolna voice agent, or (with a key configured) a real campaign against a real LLM.
 
-Full design: [`roger-that-project-brief.md`](roger-that-project-brief.md). Bug-hunting history: [`HISTORY.md`](HISTORY.md).
+Full design: [`roger-that-project-brief.md`](roger-that-project-brief.md).
 
 ## What it does
 
